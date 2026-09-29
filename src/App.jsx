@@ -67,7 +67,7 @@ export default function App() {
   const pick = (k) => { setKind(k); if (k !== 'custom') setRange(quickRange(k)) }
 
   const search = () => {
-    if (!eng) return setMsg('Pehle service engineer select karein.')
+    if (!eng) return setMsg('Select service engineer datafield*')
     if (!range[0] || !range[1] || range[0] > range[1]) return setMsg('Sahi date range select karein (From <= To).')
     setMsg('')
     const list = eng === 'ALL' ? Object.keys(data) : [eng]

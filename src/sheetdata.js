@@ -99,7 +99,7 @@ async function loadOpenIssues() {
   const resCol = header.findIndex((h) => h.startsWith('resolved'))
   const clientCol = header.findIndex((h) => h.includes('client'))
   const issueCol = header.findIndex((h) => h === 'issue')
-  if (engCol < 0 || resCol < 0) throw new Error('Issues sheet me "Service Engineer" ya "Resolved Yes/No" column nahi mila')
+  if (engCol < 0 || resCol < 0) throw new Error('Data Not Found in Issues sheet')
 
   const known = {}
   Object.keys(ENGINEERS).forEach((n) => { known[norm(n)] = n })
