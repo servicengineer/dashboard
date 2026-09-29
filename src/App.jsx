@@ -177,7 +177,7 @@ export default function App() {
             {!repeatsLoading && repeats && repeats.length > 0 && (
               <div style={{ overflowX: 'auto' }}>
                 <table>
-                  <thead><tr><th>Machine QR</th>{res.eng === 'ALL' && <th>Engineer</th>}<th>Visits in Period</th></tr></thead>
+                  <thead><tr><th>Machine QR</th>{res.eng === 'ALL' && <th>Engineer</th>}<th>Max Visits</th></tr></thead>
                   <tbody>
                     {repeats.map((r) => (
                       <tr key={r.qr}>
