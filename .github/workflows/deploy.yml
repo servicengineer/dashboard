@@ -25,15 +25,15 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: 'service-dashboard/package-lock.json' # 👈 Sub-folder path
+          cache-dependency-path: 'service-dashboard/package-lock.json'
 
       - name: Install dependencies
         run: npm ci
-        working-directory: service-dashboard # 👈 Sub-folder ke andar install karega
+        working-directory: service-dashboard
 
       - name: Build
         run: npm run build
-        working-directory: service-dashboard # 👈 Sub-folder ke andar build karega
+        working-directory: service-dashboard
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -41,7 +41,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'service-dashboard/dist' # 👈 Vite ka output dist folder upload karega
+          path: 'service-dashboard/dist'
 
       - name: Deploy to GitHub Pages
         id: deployment
