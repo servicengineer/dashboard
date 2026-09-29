@@ -23,13 +23,11 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: 'package-lock.json' # 👈 Agar root me hai toh yeh bilkul sahi hai
+          node-version: 22 # Humne node version update kar diya taaki deprecation warning na aaye
 
       - name: Install dependencies
-        run: npm install # 👈 npm ci ki jagah npm install use karein agar version mismatch ho
-        working-directory: service-dashboard
+        run: npm install
+        working-directory: service-dashboard # 👈 Yeh bilkul sahi root folder ke baad wala rasta hai
 
       - name: Build
         run: npm run build
