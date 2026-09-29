@@ -23,15 +23,13 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22 # Humne node version update kar diya taaki deprecation warning na aaye
+          node-version: 22
 
       - name: Install dependencies
         run: npm install
-        working-directory: service-dashboard # 👈 Yeh bilkul sahi root folder ke baad wala rasta hai
 
       - name: Build
         run: npm run build
-        working-directory: service-dashboard
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -39,7 +37,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'service-dashboard/dist'
+          path: 'dist' # Vite ka main output folder
 
       - name: Deploy to GitHub Pages
         id: deployment
