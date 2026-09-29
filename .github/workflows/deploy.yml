@@ -1,4 +1,4 @@
-name: Deploy Vite App to GitHub Pages
+name: Deploy to GitHub Pages
 
 on:
   push:
@@ -11,32 +11,38 @@ permissions:
   id-token: write
 
 jobs:
-  build:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: 'npm'
+          cache-dependency-path: 'service-dashboard/package-lock.json' # 👈 Sub-folder path
 
       - name: Install dependencies
         run: npm ci
+        working-directory: service-dashboard # 👈 Sub-folder ke andar install karega
 
       - name: Build
         run: npm run build
+        working-directory: service-dashboard # 👈 Sub-folder ke andar build karega
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v4
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: 'service-dashboard/dist' # 👈 Vite ka output dist folder upload karega
 
-      - name: Deploy
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
