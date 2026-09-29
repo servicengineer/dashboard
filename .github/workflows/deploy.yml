@@ -25,10 +25,10 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: 'service-dashboard/package-lock.json'
+          cache-dependency-path: 'package-lock.json' # 👈 Agar root me hai toh yeh bilkul sahi hai
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install # 👈 npm ci ki jagah npm install use karein agar version mismatch ho
         working-directory: service-dashboard
 
       - name: Build
