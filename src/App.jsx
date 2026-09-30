@@ -2,7 +2,7 @@ import "./App.css";
 import { useEffect, useState } from "react";
 import { loadAll } from "./sheetdata";
 import { loadMachineStats } from "./machineStats";
-import { loadRepeatvisitsts } from "./Repeatvisitsts";
+import { loadRepeatvisits } from "./Repeatvisits";
 import { loadAllMachineStatus } from "./pendingVisits";
 
 const BLUE = "#2563eb",
@@ -127,7 +127,7 @@ export default function App() {
 
     setRepeats(null);
     setRepeatsLoading(true);
-    loadRepeatvisitsts(eng, range[0], range[1])
+    loadRepeatvisits(eng, range[0], range[1])
       .then(setRepeats)
       .finally(() => setRepeatsLoading(false));
 
