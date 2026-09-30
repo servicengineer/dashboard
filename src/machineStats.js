@@ -240,7 +240,7 @@ async function loadSheetForMachines(tab, unresolvedOut) {
 // Manually confirmed regions har engineer ke liye (auto-detection ke bajaye).
 // Naya engineer aaye ya region badle to bas yahan update kar dein.
 export const ENGINEER_REGION = {
-    Sumit: 'Maharashtra, Goa, MP',
+    Sumit: 'Mumbai',
     Ujwal: 'Hyderabad',
     'Arun South': 'Kerala',
     Babaji: 'Bengaluru',

@@ -30,7 +30,7 @@ const QR_COL_PRIORITY = [
     ['machine number'], ['machine code'],
 ]
 
-// "Field" = site visit, "Remote" = remote support. sheetData.js ke classify() jaisa hi.
+// "Field" = site visit, "Remote" = remote support. sheetdata.js ke classify() jaisa hi.
 function isSiteVisit(text) {
     const t = String(text || '').toLowerCase()
     if (t.includes('remote')) return false
@@ -51,7 +51,7 @@ async function loadTabVisits(tab) {
     // Field/Office/Remote column dhundein - isके bina remote entries filter nahi ho sakti
     const fieldCol = findCol(header, [['field']])
 
-    // date column: content dekh kar dhundte hain (sheetData.js ki tarah)
+    // date column: content dekh kar dhundte hain (sheetdata.js ki tarah)
     let dateCol = -1, best = 0.15
     for (let c = 0; c < Math.min(8, header.length); c++) {
         const vals = data.map((r) => r[c]).filter((x) => x && String(x).trim())
