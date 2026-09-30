@@ -79,7 +79,7 @@ async function loadTabVisits(tab) {
 // Return: [{ qr: '195001', visits: 3 }, ...] sorted zyada visits pehle,
 // sirf wahi machines jinke SITE VISIT (remote support ignore) selected
 // range me 2 ya usse zyada alag rows me mile.
-export async function loadRepeatVisits(engineerOrAll, from, to) {
+export async function loadrepeatvisitsts(engineerOrAll, from, to) {
     const names = engineerOrAll === 'ALL' ? Object.keys(ENGINEERS) : [engineerOrAll]
     const counts = {} // qr -> { visits, engineers: Set }
 
