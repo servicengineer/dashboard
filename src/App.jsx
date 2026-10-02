@@ -1,9 +1,9 @@
 import './App.css'
 import { useEffect, useState } from 'react'
-import { loadAll } from './sheetdata'
-import { loadMachineStats } from './machinestats'
-import { loadRepeatVisits } from './repeatvisits'
-import { loadAllMachineStatus } from './pendingvisits'
+import { loadAll } from './sheetdata.js'
+import { loadMachineStats } from './machinestats.js'
+import { loadRepeatVisits } from './repeatvisits.js'
+import { loadAllMachineStatus } from './pendingvisits.js'
 
 const BLUE = '#2563eb', ORANGE = '#f97316'
 const pad = (n) => String(n).padStart(2, '0')
