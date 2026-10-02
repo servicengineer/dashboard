@@ -1,26 +1,26 @@
 import Papa from 'papaparse'
 import { SHEET_ID, ENGINEERS, parseDate } from './sheetdata'
-import { parseQrCell } from './machineStats'
+import { parseQrCell, findQrColumn, qrColumnDebugLabel } from './qrparser'
 
 // ============================================================
 // Machine Warranty & Pending-Quarterly-Visit Status
 // ============================================================
 // Har Machine QR ke liye:
 //   1. Installation Date = "Type of issue" = "Installation" wali sabse pehli entry ki date
-//   2. Last Field Visit  = sirf "Field" (Office Support / Remote Support ko chhod kar)
-//                          wali sabse aakhri (latest) entry ki date
-//   3. Quarterly visit pending = (aaj - Last Field Visit) >= 90 din
+//      (warranty window isi se shuru hoti hai - chahe install Field me hua ho ya Remote me)
+//   2. Last Qualifying Visit = in dono me se jo bhi LATEST ho:
+//        a) koi bhi "Installation" entry (Field ho ya Remote Support, FARAK NAHI PADTA)
+//        b) koi bhi normal "Field" visit (sirf Office Support / Remote Support exclude)
+//      Matlab: machine abhi-abhi install hui hai - chahe engineer khud gaya ho ya
+//      remotely install kiya ho - dono surat me "is quarter ka kaam ho gaya" maana
+//      jaata hai, use turant "pending" nahi dikhaya jaayega.
+//   3. Quarterly visit pending = (aaj - Last Qualifying Visit) >= 90 din
 //   4. Warranty status = (aaj - Installation Date) < 365 din -> In Warranty, warna Out of Warranty
-//
-// NOTE: agar kisi machine ki koi bhi "Field" visit record hi nahi mili (sirf
-// installation hi hui ho ab tak), to Installation Date ko hi uski last field
-// visit bhi maan liya jaata hai - kyunki installation khud ek physical event hoti hai.
 
 const tabUrl = (tab) =>
-  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`
+  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&_=${Date.now()}`
 
 const normHeader = (h) => String(h || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-
 function findCol(header, keywordGroups) {
   const lower = header.map(normHeader)
   for (const group of keywordGroups) {
@@ -30,10 +30,6 @@ function findCol(header, keywordGroups) {
   }
   return -1
 }
-const QR_COL_PRIORITY = [
-  ['machine qr'], ['v pin', 'vpin'], ['qr code', 'qr no', 'qrcode', 'qr'],
-  ['machine number'], ['machine code'],
-]
 
 // "Field" = site visit. "Office Support" / "Remote Support" dono exclude.
 function isFieldVisit(text) {
@@ -48,18 +44,16 @@ function isInstallation(text) {
 const MS_DAY = 24 * 60 * 60 * 1000
 const daysBetween = (fromIso, toIso) => Math.floor((new Date(toIso) - new Date(fromIso)) / MS_DAY)
 
-async function loadTabRecords(tab) {
-  const res = await fetch(tabUrl(tab))
+async function loadTabRecords(tab, debugLabels) {
+  const res = await fetch(tabUrl(tab), { cache: 'no-store' })
   if (!res.ok) return []
   const rows = Papa.parse(await res.text(), { skipEmptyLines: true }).data
   if (rows.length < 2) return []
   const header = rows[0].map((h) => String(h || ''))
   const data = rows.slice(1)
 
-  const qrCol = findCol(header, QR_COL_PRIORITY)
   const issueCol = findCol(header, [['type of issue']])
   const fieldCol = findCol(header, [['field']])
-  if (qrCol < 0) return []
 
   let dateCol = -1, best = 0.15
   for (let c = 0; c < Math.min(8, header.length); c++) {
@@ -69,6 +63,14 @@ async function loadTabRecords(tab) {
     if (frac > best) { best = frac; dateCol = c }
   }
   if (dateCol < 0) return []
+
+  const qrCol = findQrColumn(tab, header, data, [dateCol, fieldCol, issueCol])
+  const qrLabel = qrColumnDebugLabel(tab, header, data, [dateCol, fieldCol, issueCol])
+  if (debugLabels) debugLabels.push(qrLabel)
+  if (qrCol < 0) {
+    console.warn(`[pendingvisits] "${tab.trim()}" ke liye QR column NAHI mila - is tab ki koi bhi machine search/warranty status me nahi aayegi.`)
+    return []
+  }
 
   const out = []
   let lastYear = null
@@ -96,33 +98,40 @@ export async function loadAllMachineStatus(engineerOrAll, todayIso) {
   const today = todayIso || new Date().toISOString().slice(0, 10)
   const names = engineerOrAll === 'ALL' ? Object.keys(ENGINEERS) : [engineerOrAll]
   const byQr = {}
+  const qrDebug = {}
 
   await Promise.all(
     names.map(async (name) => {
       const tabs = ENGINEERS[name] || []
+      const debugLabels = []
       for (const tab of tabs) {
-        const records = await loadTabRecords(tab)
+        const records = await loadTabRecords(tab, debugLabels)
         for (const rec of records) {
           for (const qr of rec.codes) {
-            byQr[qr] = byQr[qr] || { installDate: null, lastFieldVisit: null, engineers: new Set() }
+            byQr[qr] = byQr[qr] || { installDate: null, lastVisit: null, engineers: new Set() }
             const entry = byQr[qr]
             entry.engineers.add(name)
+            // Warranty window ke liye: sabse pehli Installation date (chahe Field/Remote)
             if (rec.isInstall && (!entry.installDate || rec.date < entry.installDate)) {
               entry.installDate = rec.date
             }
-            if (rec.isField && (!entry.lastFieldVisit || rec.date > entry.lastFieldVisit)) {
-              entry.lastFieldVisit = rec.date
+            // Pending-check ke liye: Installation (Field ya Remote, dono) + normal Field
+            // visit - in sabme se sabse AAKHRI (latest) date "last qualifying visit" hai.
+            if ((rec.isField || rec.isInstall) && (!entry.lastVisit || rec.date > entry.lastVisit)) {
+              entry.lastVisit = rec.date
             }
           }
         }
       }
+      qrDebug[name] = debugLabels
     })
   )
+  console.log('[pendingvisits] QR column used:', qrDebug)
 
   const result = {}
   for (const qr in byQr) {
     const e = byQr[qr]
-    const lastVisit = e.lastFieldVisit || e.installDate
+    const lastVisit = e.lastVisit
     if (!lastVisit) continue
 
     const daysSinceVisit = daysBetween(lastVisit, today)

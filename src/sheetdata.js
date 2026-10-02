@@ -1,4 +1,5 @@
 import Papa from 'papaparse'
+import { parseQrCell, findQrColumn, qrColumnDebugLabel } from './qrparser'
 
 // 1) Google Sheet ka ID yahan paste karein (URL me /d/ aur /edit ke beech ka part)
 export const SHEET_ID = '1A4UjGjOpsuBdm77OLxwBoHZmm32aAkYn6r7AKOERcbs'
@@ -19,8 +20,11 @@ export const ENGINEERS = {
   Tushar: ['Tushar'],
 }
 
+// Cache-busting: Google ka gviz CSV export kabhi-kabhi kuch der ke liye purana
+// (stale) data de deta hai jab sheet abhi-abhi edit hui ho. Har fetch me ek unique
+// timestamp jodne se Google aur browser dono fresh data dete hain, purana cached nahi.
 const tabUrl = (tab) =>
-  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`
+  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&_=${Date.now()}`
 
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
 const pad = (n) => String(n).padStart(2, '0')
@@ -52,8 +56,8 @@ function classify(text) {
   return null
 }
 
-async function loadTab(tab, out) {
-  const res = await fetch(tabUrl(tab))
+async function loadTab(tab, out, debugLabels) {
+  const res = await fetch(tabUrl(tab), { cache: 'no-store' })
   if (!res.ok) throw new Error(`Tab "${tab}" load nahi hua (sheet share/ID check karein)`)
   const rows = Papa.parse(await res.text(), { skipEmptyLines: true }).data
   if (rows.length < 2) return
@@ -73,6 +77,20 @@ async function loadTab(tab, out) {
   }
   if (dateCol < 0) return
 
+  // QR column dhundein - ek hi row me kai machines ho sakti hain (jaise
+  // "940013,22,24,27" = 4 machines ek row me). Visit count ab ROWS se nahi,
+  // balki us row me likhe MACHINE QR ki ginti se banta hai - matlab agar
+  // 1 Oct ko Babaji ki sheet me ek row me 4 QR hain (4 remote installation)
+  // aur doosri row me 2 QR hain (field visit), to total visit = 4 + 2 = 6.
+  const qrCol = findQrColumn(tab, header, data, [dateCol, fieldCol])
+  const qrLabel = qrColumnDebugLabel(tab, header, data, [dateCol, fieldCol])
+  if (debugLabels) debugLabels.push(qrLabel)
+  if (qrCol < 0) {
+    // Ye warning tabhi dikhti hai jab QR column bilkul nahi mila - matlab is tab
+    // ke visits ab bhi "1 row = 1 visit" se gine jaa rahe hain, QR-count se nahi.
+    console.warn(`[sheetdata] "${tab.trim()}" ke liye QR column NAHI mila - visits row-count se gine jaa rahe hain (galat ho sakta hai agar ek row me kai QR hon). QR_COL_OVERRIDE me is tab ka header manually set karein.`)
+  }
+
   let lastYear = null
   for (const r of data) {
     const d = parseDate(r[dateCol], lastYear)
@@ -80,8 +98,12 @@ async function loadTab(tab, out) {
     lastYear = +d.slice(0, 4)
     const k = classify(r[fieldCol])
     if (!k) continue
+    const codes = qrCol >= 0 ? parseQrCell(r[qrCol]) : []
+    // Agar row me koi valid QR nahi mila (column hi nahi hai, ya cell khaali/invalid
+    // hai), to purane tarike se 1 visit maan lein - taaki data loss na ho.
+    const weight = codes.length > 0 ? codes.length : 1
     out[d] = out[d] || [0, 0]
-    out[d][k === 's' ? 0 : 1] += 1
+    out[d][k === 's' ? 0 : 1] += weight
   }
 }
 
@@ -99,7 +121,7 @@ async function loadOpenIssues() {
   const resCol = header.findIndex((h) => h.startsWith('resolved'))
   const clientCol = header.findIndex((h) => h.includes('client'))
   const issueCol = header.findIndex((h) => h === 'issue')
-  if (engCol < 0 || resCol < 0) throw new Error('Data Not Found in Issues sheet')
+  if (engCol < 0 || resCol < 0) throw new Error('Issues sheet me "Service Engineer" ya "Resolved Yes/No" column nahi mila')
 
   const known = {}
   Object.keys(ENGINEERS).forEach((n) => { known[norm(n)] = n })
@@ -121,17 +143,23 @@ export async function loadAll() {
   const result = {}
   const errors = []
   let open = {}, unmatched = {}
+  const qrDebug = {} // { EngineerName: ['TabName: ColumnHeader', ...] } - console me check karne ke liye
   await Promise.all([
     ...Object.entries(ENGINEERS).map(async ([name, tabs]) => {
       const out = {}
+      const debugLabels = []
       for (const tab of tabs) {
-        try { await loadTab(tab, out) } catch (e) { errors.push(e.message) }
+        try { await loadTab(tab, out, debugLabels) } catch (e) { errors.push(e.message) }
       }
       result[name] = out
+      qrDebug[name] = debugLabels
     }),
     loadOpenIssues()
       .then((r) => { open = r.open; unmatched = r.unmatched })
       .catch((e) => errors.push(e.message)),
   ])
+  // Debug: F12 -> Console me dekhein kis column ko QR maan kar visit-count kiya gaya.
+  // "NOT FOUND" dikhe to us tab ka QR data row-count fallback se gina ja raha hai.
+  console.log('[sheetdata] QR column used for visit counting:', qrDebug)
   return { data: result, errors, open, unmatched }
 }
