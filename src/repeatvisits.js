@@ -1,6 +1,6 @@
 import Papa from 'papaparse'
-import { SHEET_ID, ENGINEERS, parseDate } from './sheetdata'
-import { parseQrCell, findQrColumn, qrColumnDebugLabel } from './qrparser'
+import { SHEET_ID, ENGINEERS, parseDate } from './sheetdata.js'
+import { parseQrCell, findQrColumn, qrColumnDebugLabel } from './qrparser.js'
 
 // ============================================================
 // "Ek hi machine par multiple visits" — selected date range ke andar

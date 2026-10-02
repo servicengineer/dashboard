@@ -1,6 +1,6 @@
 import Papa from 'papaparse'
-import { SHEET_ID, ENGINEERS } from './sheetdata'
-import { parseQrCell, findQrColumn } from './qrparser'
+import { SHEET_ID, ENGINEERS } from './sheetdata.js'
+import { parseQrCell, findQrColumn } from './qrparser.js'
 
 // Simple single-keyword column finder (state/city jaise chhote lookups ke liye)
 function findColSimple(header, keyword) {

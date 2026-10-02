@@ -1,5 +1,14 @@
 import Papa from 'papaparse'
-import { parseQrCell, findQrColumn, qrColumnDebugLabel } from './qrparser'
+import { parseQrCell, findQrColumn, qrColumnDebugLabel } from './qrparser.js'
+
+// Ek row ka "visit weight" - agar QR cell se 1+ code nikle to utni hi ginti,
+// warna 1 (purana row-count tarika, data-loss na ho isliye). Alag function me
+// rakha hai taaki ye hi logic test file me bhi seedha import karke verify ho sake.
+// (export isliye kiya hai taaki test file isi function ko seedha test kar sake)
+export function computeRowWeight(qrCellRaw) {
+  const codes = parseQrCell(qrCellRaw)
+  return codes.length > 0 ? codes.length : 1
+}
 
 // 1) Google Sheet ka ID yahan paste karein (URL me /d/ aur /edit ke beech ka part)
 export const SHEET_ID = '1A4UjGjOpsuBdm77OLxwBoHZmm32aAkYn6r7AKOERcbs'
@@ -33,13 +42,21 @@ const iso = (y, m, d) => (y >= 2022 && y <= 2027 && m >= 0 && m < 12 && d >= 1 &
 // Date ko 'YYYY-MM-DD' me badalta hai. Saal na likha ho to fallbackYear use hota hai.
 export function parseDate(v, fallbackYear = null) {
   if (v === null || v === undefined) return null
-  const s = String(v).trim().toLowerCase().replace(/(\d+)\s*'?(st|nd|rd|th)\b/, '$1')
+  let s = String(v).trim().toLowerCase().replace(/(\d+)\s*'?(st|nd|rd|th)\b/, '$1')
   if (!s) return null
+  // Typo-tolerance: "14--08 -2026" jaise double-separator/extra-space wale
+  // typo ko normalize kar dete hain, taaki genuine typing mistakes bhi parse ho jaayen.
+  s = s.replace(/[-]{2,}/g, '-').replace(/\s+/g, ' ').trim()
   let m
   if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return iso(+m[1], +m[2] - 1, +m[3])
-  if ((m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-]+(\d{2,4})$/))) {
+  if ((m = s.match(/^(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]+\s*(\d{2,4})$/))) {
     const y = +m[3] < 100 ? 2000 + +m[3] : +m[3]
-    return iso(y, +m[2] - 1, +m[1]) // dd/mm/yyyy (India format)
+    const a = +m[1], b = +m[2]
+    const dayFirst = iso(y, b - 1, a) // dd/mm/yyyy - sheet ka normal (India) convention
+    if (dayFirst) return dayFirst
+    // "10/17/2025" jaisी entry: pehla number (10) month nahi ho sakta agar doosra
+    // number (17) 12 se zyada hai - matlab ye US-style month/day/year hai, swap kar dein.
+    return iso(y, a - 1, b)
   }
   if ((m = s.match(/^(\d{1,2})[\s\-]*([a-z]{3})[a-z]*[\s\-,]*(\d{4})?$/)) && MONTHS[m[2]] !== undefined) {
     const y = m[3] ? +m[3] : fallbackYear
@@ -49,14 +66,22 @@ export function parseDate(v, fallbackYear = null) {
 }
 
 // "Field" = site visit, "Remote" = remote support. Baaki (office/home/warehouse) ignore.
-function classify(text) {
+// (export isliye kiya hai taaki test file isi function ko seedha test kar sake)
+export function classify(text) {
   const t = String(text || '').toLowerCase()
   if (t.includes('remote')) return 'r'
   if (t.includes('field') || t.includes('fied')) return 's'
   return null
 }
 
-async function loadTab(tab, out, debugLabels) {
+// "This month" start - sirf isi date ke baad ke rows detail me console me dikhayenge,
+// taaki debug output chhota aur kaam ka rahe (saari history nahi, bas current month).
+const thisMonthStart = (() => {
+  const t = new Date()
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-01`
+})()
+
+async function loadTab(tab, out, debugLabels, rowDebugOut) {
   const res = await fetch(tabUrl(tab), { cache: 'no-store' })
   if (!res.ok) throw new Error(`Tab "${tab}" load nahi hua (sheet share/ID check karein)`)
   const rows = Papa.parse(await res.text(), { skipEmptyLines: true }).data
@@ -93,17 +118,37 @@ async function loadTab(tab, out, debugLabels) {
 
   let lastYear = null
   for (const r of data) {
-    const d = parseDate(r[dateCol], lastYear)
-    if (!d) continue
+    const qrRaw = qrCol >= 0 ? r[qrCol] : undefined
+    const hasQr = qrRaw !== undefined && String(qrRaw).trim() !== ''
+    const rawDateText = r[dateCol]
+
+    const d = parseDate(rawDateText, lastYear)
+    if (!d) {
+      // Date parse hi nahi hui - agar is row me QR data bhi hai, to ye wahi row ho
+      // sakti hai jo "this month" me honi chahiye thi par date-format ki wajah se
+      // chhoot gayi. Isko bhi console me dikhate hain taaki miss na ho.
+      if (rowDebugOut && hasQr) {
+        rowDebugOut.push({ tab: tab.trim(), skipped: 'DATE NOT PARSED', rawDateText, qrRaw })
+      }
+      continue
+    }
     lastYear = +d.slice(0, 4)
     const k = classify(r[fieldCol])
-    if (!k) continue
-    const codes = qrCol >= 0 ? parseQrCell(r[qrCol]) : []
-    // Agar row me koi valid QR nahi mila (column hi nahi hai, ya cell khaali/invalid
-    // hai), to purane tarike se 1 visit maan lein - taaki data loss na ho.
-    const weight = codes.length > 0 ? codes.length : 1
+    if (!k) {
+      if (rowDebugOut && hasQr && d >= thisMonthStart) {
+        rowDebugOut.push({ tab: tab.trim(), date: d, skipped: 'FIELD NOT CLASSIFIED (field/remote/office text samajh nahi aaya)', fieldRaw: r[fieldCol], qrRaw })
+      }
+      continue
+    }
+    const weight = qrCol >= 0 ? computeRowWeight(qrRaw) : 1
     out[d] = out[d] || [0, 0]
     out[d][k === 's' ? 0 : 1] += weight
+
+    // Is month ke rows ka poora detail console-debug ke liye bhi save karte hain -
+    // taaki pata chale raw cell me kya tha aur usse kitne codes nikle.
+    if (rowDebugOut && d >= thisMonthStart) {
+      rowDebugOut.push({ tab: tab.trim(), date: d, type: k === 's' ? 'Site' : 'Remote', qrRaw, codes: parseQrCell(qrRaw), weight })
+    }
   }
 }
 
@@ -144,15 +189,18 @@ export async function loadAll() {
   const errors = []
   let open = {}, unmatched = {}
   const qrDebug = {} // { EngineerName: ['TabName: ColumnHeader', ...] } - console me check karne ke liye
+  const rowDebug = {} // { EngineerName: [{ tab, date, type, qrRaw, codes, weight }, ...] } - is month ke rows
   await Promise.all([
     ...Object.entries(ENGINEERS).map(async ([name, tabs]) => {
       const out = {}
       const debugLabels = []
+      const rowDebugOut = []
       for (const tab of tabs) {
-        try { await loadTab(tab, out, debugLabels) } catch (e) { errors.push(e.message) }
+        try { await loadTab(tab, out, debugLabels, rowDebugOut) } catch (e) { errors.push(e.message) }
       }
       result[name] = out
       qrDebug[name] = debugLabels
+      rowDebug[name] = rowDebugOut
     }),
     loadOpenIssues()
       .then((r) => { open = r.open; unmatched = r.unmatched })
@@ -161,5 +209,8 @@ export async function loadAll() {
   // Debug: F12 -> Console me dekhein kis column ko QR maan kar visit-count kiya gaya.
   // "NOT FOUND" dikhe to us tab ka QR data row-count fallback se gina ja raha hai.
   console.log('[sheetdata] QR column used for visit counting:', qrDebug)
+  // Is month ke har row ka raw QR cell + usse nikle codes + weight - isse seedha
+  // dikh jaata hai ki kisi specific row par parsing me kya hua.
+  console.log('[sheetdata] This month row-by-row QR detail:', rowDebug)
   return { data: result, errors, open, unmatched }
 }
